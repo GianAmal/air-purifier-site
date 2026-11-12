@@ -1,0 +1,685 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mini desktop air purifier</title>
+<meta name="description" content="A quiet, compact HEPA air purifier with negative ions that runs off any USB port.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600&family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&display=swap" rel="stylesheet">
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+<style>
+  :root {
+    --serif: "Fraunces", "Iowan Old Style", Georgia, serif;
+    --sans: "DM Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --below: #12284a;
+    --below-ink: #e8eff9;
+    --below-soft: #a8bddb;
+  }
+
+    
+  :root {
+    --sky: #0f2a52; --ink: #17324a; --hero-ink: #ffffff; --panel: #f5f9fc; --accent: #2769a8; --shadow: #10203c;
+    --scrim: linear-gradient(to bottom, rgba(8,22,48,.7), rgba(8,22,48,.38) 28%, rgba(8,22,48,0) 50%);
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0; font-family: var(--sans); color: var(--ink);
+    background: var(--below); line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: inherit; }
+  :focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; border-radius: 6px; }
+
+  /* ---------- top bar ---------- */
+  .bar {
+    position: absolute; inset: 0 0 auto 0; z-index: 10;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 20px clamp(16px, 4vw, 48px); color: var(--hero-ink, var(--ink));
+    transition: color .8s;
+  }
+  .wordmark { font-family: var(--serif); font-weight: 500; font-size: 1.15rem; letter-spacing: -.01em; text-decoration: none; }
+  .bar nav { display: flex; gap: clamp(14px, 2.4vw, 32px); align-items: center; font-size: .95rem; }
+  .bar nav a { text-decoration: none; }
+  .bar nav a:hover { text-decoration: underline; text-underline-offset: 4px; }
+  .bar .buy { padding: 9px 18px; border-radius: 999px; background: var(--hero-ink, var(--ink)); color: var(--sky); font-weight: 500; transition: background .8s, color .8s; }
+  .bar .buy:hover { text-decoration: none; filter: brightness(1.25); }
+  @media (max-width: 640px) { .bar nav a:not(.buy) { display: none; } }
+
+  /* ---------- stage ---------- */
+  .stage { height: 420vh; position: relative; }
+  .view {
+    position: sticky; top: 0; height: 100vh; height: 100svh; overflow: hidden;
+    background: var(--sky); transition: background .8s;
+  }
+  #gl { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  .photo { position: absolute; inset: 0; background: radial-gradient(circle at 50% 64%, rgba(110,170,245,.38), rgba(110,170,245,0) 46%), linear-gradient(to bottom, #081730 0%, #0f2a52 45%, #1b467f 100%); }
+  .photo::after { content: ""; position: absolute; inset: 0; background: var(--scrim, none); }
+  #gl { z-index: 1; touch-action: pan-y; cursor: grab; }
+  #gl.dragging { cursor: grabbing; }
+  .no-gl #gl { display: none; }
+
+  .hero-copy {
+    position: absolute; z-index: 3; inset: 0 0 auto 0; pointer-events: none;
+    padding: clamp(76px, 11vh, 120px) 20px 0; text-align: center; color: var(--hero-ink, var(--ink));
+    transition: opacity .45s, transform .45s, color .8s;
+  }
+  .hero-copy h1 {
+    font-family: var(--serif); font-weight: 500; letter-spacing: -.02em; line-height: 1.02;
+    font-size: clamp(1.75rem, min(5.4vw, 8.4vh), 4.6rem);
+    margin: 0 auto; white-space: nowrap;
+  }
+  .hero-copy p { margin: 16px auto 0; max-width: 44ch; font-size: clamp(1rem, 1.5vw, 1.2rem); text-wrap: balance; }
+  .stepping .hero-copy { opacity: 0; transform: translateY(-16px); }
+
+  /* ---------- controls ---------- */
+  .dock {
+    position: absolute; z-index: 4; left: 50%; bottom: clamp(12px, 3vh, 28px); transform: translateX(-50%);
+    display: flex; flex-direction: column; align-items: center; gap: 8px; width: max-content; max-width: calc(100vw - 24px);
+    transition: opacity .35s, transform .35s;
+  }
+  .stepping .dock { opacity: 0; pointer-events: none; transform: translateX(-50%) translateY(20px); }
+  .dock-row {
+    display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; padding: 6px;
+    background: color-mix(in srgb, var(--panel) 92%, transparent); border-radius: 22px;
+    box-shadow: 0 10px 30px -12px color-mix(in srgb, var(--shadow) 70%, transparent);
+    transition: background .8s;
+  }
+  .dock button {
+    font: 500 .92rem/1 var(--sans); color: var(--ink); background: transparent; border: 0;
+    padding: 11px 15px; border-radius: 16px; cursor: pointer; display: inline-flex; align-items: center; gap: 8px;
+    transition: background .2s, color .2s;
+  }
+  .dock button:hover { background: color-mix(in srgb, var(--ink) 10%, transparent); }
+  .dock button[aria-pressed="true"] { background: var(--ink); color: var(--panel); }
+  .dock .led { width: 8px; height: 8px; border-radius: 50%; background: currentColor; opacity: .35; }
+  .dock button[aria-pressed="true"] .led { background: #7fe0ff; opacity: 1; box-shadow: 0 0 8px #7fe0ff; }
+  .dock .sep { width: 1px; background: color-mix(in srgb, var(--ink) 18%, transparent); margin: 6px 4px; }
+  .dock .scenes button { padding: 5px; border-radius: 50%; }
+  .dock .scenes button[aria-pressed="true"] { background: transparent; }
+  .dock .scenes button[aria-pressed="true"] .swatch { box-shadow: 0 0 0 2.5px var(--ink); }
+  .status {
+    margin: 0; font-size: .85rem; padding: 5px 12px; border-radius: 999px; text-align: center;
+    color: var(--below-ink); background: color-mix(in srgb, var(--shadow) 82%, transparent);
+  }
+  @media (max-width: 640px) { .dock .sep { display: none; } .dock button { padding: 10px 12px; font-size: .86rem; } }
+
+  /* ---------- exploded-view callouts ---------- */
+  .callouts { position: absolute; inset: 0; z-index: 3; pointer-events: none; }
+  .callout { position: absolute; left: 0; top: 0; display: flex; align-items: center; opacity: 0; white-space: nowrap; color: var(--ink); will-change: transform; }
+  .callout.left { flex-direction: row-reverse; }
+  .callout i { width: 9px; height: 9px; border-radius: 50%; border: 2px solid var(--ink); background: var(--panel); flex: none; margin: 0 -1px; }
+  .callout u { width: clamp(22px, 5vw, 72px); height: 0; border-top: 1.5px dashed var(--ink); flex: none; }
+  .callout div { background: color-mix(in srgb, var(--panel) 92%, transparent); border: 1.5px solid var(--ink); border-radius: 10px; padding: 6px 11px 7px; line-height: 1.25; transition: background .8s; }
+  .callout b { display: block; font-size: .86rem; font-weight: 600; }
+  .callout b em { font-style: normal; font-variant-numeric: tabular-nums; opacity: .55; margin-right: 6px; }
+  .callout span { display: block; font-size: .78rem; opacity: .8; }
+  .callouts.compact .callout span { display: none; }
+  .callouts.compact .callout div { padding: 4px 8px 5px; }
+  .callouts.compact .callout b { font-size: .76rem; }
+  .inspecting .hero-copy { opacity: 0; transform: translateY(-16px); }
+
+  /* ---------- how it works steps ---------- */
+  .steps { position: absolute; z-index: 3; inset: 0; pointer-events: none; }
+  .step {
+    position: absolute; right: clamp(20px, 8vw, 120px); top: 50%; width: min(430px, 40vw);
+    transform: translateY(-40%); opacity: 0; transition: opacity .45s, transform .45s, background .8s;
+    background: color-mix(in srgb, var(--panel) 94%, transparent); border-radius: 28px; padding: 30px 32px 32px;
+  }
+  .step.on { opacity: 1; transform: translateY(-50%); }
+  .step .n { font-family: var(--serif); font-size: 3.4rem; line-height: 1; color: var(--accent); transition: color .8s; }
+  .step h2 { font-family: var(--serif); font-weight: 500; font-size: clamp(1.5rem, 2.4vw, 2rem); line-height: 1.1; letter-spacing: -.01em; margin: 10px 0 10px; }
+  .step p { margin: 0; font-size: 1.02rem; }
+  @media (max-aspect-ratio: 9/10) {
+    .step { right: 14px; left: 14px; width: auto; top: auto; bottom: 16px; transform: translateY(16px); padding: 20px 22px 22px; border-radius: 22px; }
+    .step.on { transform: none; }
+    .step .n { font-size: 2.2rem; }
+  }
+
+  /* ---------- below the grass ---------- */
+  .below { color: var(--below-ink); }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 clamp(20px, 5vw, 48px); }
+  .below section { padding: clamp(64px, 11vh, 120px) 0 0; }
+  .below h2 { font-family: var(--serif); font-weight: 500; letter-spacing: -.015em; line-height: 1.05; font-size: clamp(1.9rem, 4.4vw, 3.2rem); margin: 0 0 clamp(28px, 5vh, 48px); max-width: 18ch; text-wrap: balance; }
+  .rooms { list-style: none; margin: 0; padding: 0; }
+  .rooms li { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 8px 32px; align-items: baseline; padding: 22px 0; border-top: 1px solid rgba(226,236,250,.2); }
+  .rooms li:last-child { border-bottom: 1px solid rgba(226,236,250,.2); }
+  .rooms b { font-family: var(--serif); font-weight: 400; font-size: clamp(1.6rem, 3.4vw, 2.5rem); line-height: 1.1; }
+  .rooms span { color: var(--below-soft); font-size: 1.08rem; max-width: 46ch; }
+  @media (max-width: 640px) { .rooms li { grid-template-columns: 1fr; } }
+
+  .clears { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: clamp(20px, 4vw, 48px); }
+  .clears h3 { font-family: var(--serif); font-weight: 500; font-size: 1.45rem; margin: 14px 0 6px; }
+  .clears p { margin: 0; color: var(--below-soft); max-width: 32ch; }
+  .clears svg { width: 54px; height: 54px; display: block; }
+  @media (max-width: 720px) { .clears { grid-template-columns: 1fr; } }
+
+  .details { max-width: 720px; }
+  .details dl { margin: 0; }
+  .details dl div { display: grid; grid-template-columns: 7.5em 1fr; gap: 16px; padding: 14px 0; border-top: 1px solid rgba(226,236,250,.2); }
+  .details dt { color: var(--below-soft); }
+  .details dd { margin: 0; font-weight: 500; }
+  .note { color: var(--below-soft); font-size: .92rem; margin: 18px 0 0; max-width: 52ch; }
+
+  .cta { text-align: center; padding-bottom: clamp(64px, 11vh, 120px) !important; }
+  .cta h2 { margin-left: auto; margin-right: auto; margin-bottom: 24px; }
+  .cta a.big { display: inline-block; padding: 16px 30px; border-radius: 999px; background: #fdf3c4; color: #12284a; font-weight: 600; font-size: 1.08rem; text-decoration: none; }
+  .cta a.big:hover { background: #fff; }
+  footer { border-top: 1px solid rgba(226,236,250,.2); padding: 22px 0 32px; color: var(--below-soft); font-size: .88rem; }
+  footer .wrap { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    * { transition-duration: .01s !important; }
+  }
+</style>
+</head>
+<body>
+
+<header class="bar">
+  <a class="wordmark" href="#top" aria-label="Back to top">Mini air purifier</a>
+  <nav aria-label="Page">
+    <a href="#how">How it works</a>
+    <a href="#rooms">Where it goes</a>
+    <a href="#details">Details</a>
+    <a class="buy" href="https://www.ebay.com/itm/860138559348" target="_blank" rel="noopener">See it on eBay</a>
+  </nav>
+</header>
+
+<main>
+<section class="stage" id="top">
+  <div class="view" id="view">
+
+    <div class="photo"></div>
+
+    <canvas id="gl" role="img" aria-label="3D model of the mini air purifier. Drag to turn it."></canvas>
+
+    <div class="hero-copy">
+      <h1 id="headline">Air as clear as snow.</h1>
+      <p id="subline">A quiet, compact purifier that runs off any USB port.</p>
+    </div>
+
+    <div class="callouts" id="callouts" aria-hidden="true">
+      <div class="callout"><i></i><u></u><div><b><em>A</em>Outlet grille</b><span>Clean air and ions leave here</span></div></div>
+      <div class="callout"><i></i><u></u><div><b><em>B</em>Fan</b><span>Draws air up through the filter</span></div></div>
+      <div class="callout"><i></i><u></u><div><b><em>C</em>HEPA filter</b><span>Pleated; holds smoke, dust, dander</span></div></div>
+      <div class="callout"><i></i><u></u><div><b><em>D</em>Intake shell</b><span>Perforated all the way round</span></div></div>
+    </div>
+
+    <div class="steps" id="how">
+      <article class="step" data-step="1">
+        <div class="n" aria-hidden="true">1</div>
+        <h2>Air comes in from every side</h2>
+        <p>The perforated lower body draws room air in all the way round, so it works whichever way it faces on your desk.</p>
+      </article>
+      <article class="step" data-step="2">
+        <div class="n" aria-hidden="true">2</div>
+        <h2>A HEPA filter catches what's in it</h2>
+        <p>Inside the body sits a pleated HEPA filter. Smoke, dust and pet dander stay in the pleats instead of the room.</p>
+      </article>
+      <article class="step" data-step="3">
+        <div class="n" aria-hidden="true">3</div>
+        <h2>Clean air leaves through the top</h2>
+        <p>The fan pushes filtered air up through the grille, carrying negative ions with it.</p>
+      </article>
+    </div>
+
+    <div class="dock" id="dock">
+      <div class="dock-row" role="group" aria-label="Purifier controls">
+        <button id="b-power" aria-pressed="true"><span class="led"></span>Power</button>
+        <button id="b-smoke">Puff of smoke</button>
+        <button id="b-inside" aria-pressed="false">Look inside</button>
+      </div>
+      <p class="status" id="status" aria-live="polite">Drag to turn it. Tap the top to switch it on or off.</p>
+    </div>
+  </div>
+</section>
+
+<div class="below">
+  <section id="rooms"><div class="wrap">
+    <h2>Small enough to live where you do</h2>
+    <ul class="rooms">
+      <li><b>Bedroom</b><span>Built to run quietly, so it can stay on through the night.</span></li>
+      <li><b>Office</b><span>Sits beside a monitor and takes its power from a laptop or USB hub.</span></li>
+      <li><b>Kitchen</b><span>Keeps working on cooking smells after the pans are washed.</span></li>
+    </ul>
+  </div></section>
+
+  <section><div class="wrap">
+    <h2>What it's made to deal with</h2>
+    <div class="clears">
+      <div>
+        <svg viewBox="0 0 54 54" fill="none" stroke="#8fc1ec" stroke-width="2.5" stroke-linecap="round"><path d="M14 44c0-8 8-8 8-16s-6-8-6-16"/><path d="M27 44c0-8 8-8 8-16s-6-8-6-16"/><path d="M40 44c0-6 5-7 5-13"/></svg>
+        <h3>Smoke</h3><p>From cooking, candles or the neighbours' barbecue drifting in.</p>
+      </div>
+      <div>
+        <svg viewBox="0 0 54 54" fill="none" stroke="#8fc1ec" stroke-width="2.5" stroke-linecap="round"><circle cx="27" cy="30" r="13"/><path d="M27 17V8M19 10l3 6M35 10l-3 6"/></svg>
+        <h3>Odors</h3><p>The smells that hang around a room long after their source has gone.</p>
+      </div>
+      <div>
+        <svg viewBox="0 0 54 54" fill="#8fc1ec"><ellipse cx="27" cy="36" rx="10" ry="8"/><circle cx="12" cy="26" r="4.5"/><circle cx="21" cy="16" r="4.5"/><circle cx="33" cy="16" r="4.5"/><circle cx="42" cy="26" r="4.5"/></svg>
+        <h3>Pet dander</h3><p>The fine flakes cats and dogs shed that end up in the air you breathe.</p>
+      </div>
+    </div>
+  </div></section>
+
+  <section id="details"><div class="wrap details">
+    <div>
+      <h2>The details</h2>
+      <dl>
+        <div><dt>Filter</dt><dd>HEPA</dd></div>
+        <div><dt>Ions</dt><dd>Negative ion technology</dd></div>
+        <div><dt>Power</dt><dd>USB</dd></div>
+        <div><dt>Sound</dt><dd>Quiet operation</dd></div>
+        <div><dt>Size</dt><dd>Compact and portable, made for a desktop</dd></div>
+        <div><dt>Rooms</dt><dd>Bedroom, office, kitchen</dd></div>
+      </dl>
+      <p class="note">The 3D model on this page is an illustration. Exact dimensions and what comes in the box are on the listing.</p>
+    </div>
+  </div></section>
+
+  <section class="cta"><div class="wrap">
+    <h2>Put fresh air on your desk</h2>
+    <a class="big" href="https://www.ebay.com/itm/860138559348" target="_blank" rel="noopener">See it on eBay</a>
+  </div></section>
+
+  <footer><div class="wrap"><span>Mini desktop air purifier</span><a href="#top">Back to top</a></div></footer>
+</div>
+</main>
+
+<script type="module">
+import * as THREE from 'three';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+
+const root = document.documentElement;
+const view = document.getElementById('view');
+const canvas = document.getElementById('gl');
+const statusEl = document.getElementById('status');
+const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const css = n => getComputedStyle(root).getPropertyValue(n).trim();
+const say = t => { if (statusEl.textContent !== t) statusEl.textContent = t; };
+
+const state = { power: true, inside: false, step: 0, flow: 1, explode: 0 };
+
+/* ---------- scroll steps ---------- */
+const stage = document.querySelector('.stage');
+const stepEls = [...document.querySelectorAll('.step')];
+function onScroll() {
+  const r = stage.getBoundingClientRect();
+  const p = Math.min(1, Math.max(0, -r.top / (r.height - innerHeight)));
+  const step = p < .16 ? 0 : p < .44 ? 1 : p < .72 ? 2 : 3;
+  if (step !== state.step) {
+    state.step = step;
+    view.classList.toggle('stepping', step > 0);
+    stepEls.forEach(el => el.classList.toggle('on', +el.dataset.step === step));
+  }
+}
+addEventListener('scroll', onScroll, { passive: true });
+onScroll();
+
+/* ---------- three.js ---------- */
+let renderer;
+try {
+  renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+} catch (e) {
+  view.classList.add('no-gl');
+  document.getElementById('b-smoke').hidden = true;
+  document.getElementById('b-inside').hidden = true;
+  document.getElementById('b-power').hidden = true;
+  say('3D view is not available in this browser.');
+}
+
+if (renderer) {
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.0;
+
+  const scene = new THREE.Scene();
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+  const FOV = 30;
+  const camera = new THREE.PerspectiveCamera(FOV, 1, 0.1, 100);
+  const hemi = new THREE.HemisphereLight(0xffffff, 0x2a4a7a, 0.9);
+  const key = new THREE.DirectionalLight(0xffffff, 1.4);
+  key.position.set(-3, 6, 5);
+  scene.add(hemi, key);
+
+  const rig = new THREE.Group();     // moves the whole thing around the frame
+  const spin = new THREE.Group();    // the part you drag
+  rig.add(spin); scene.add(rig);
+
+  /* --- materials --- */
+  const white = new THREE.MeshStandardMaterial({ color: 0xf2f3f1, roughness: 0.48, envMapIntensity: 0.7, side: THREE.DoubleSide });
+
+  /* --- perforated lower shell --- */
+  const SHELL_H = 1.6, SEAM = 1.72;
+  function shellTextures() {
+    const W = 2048, H = 1024;
+    const c = document.createElement('canvas'), a = document.createElement('canvas');
+    c.width = a.width = W; c.height = a.height = H;
+    const g = c.getContext('2d'), al = a.getContext('2d');
+    g.fillStyle = '#f2f3f1'; g.fillRect(0, 0, W, H);
+    al.fillStyle = '#fff'; al.fillRect(0, 0, W, H);
+    const ux = W / (2 * Math.PI), uy = H / SHELL_H, P = 4, pw = W / P;
+    const pitch = 0.074, rad = 0.0275;
+    for (let p = 0; p <= P; p++) {
+      const x0 = p * pw;
+      g.fillStyle = '#d5d9d6';
+      g.beginPath(); g.roundRect(x0 - 6, H * .07, 12, H * .86, 6); g.fill();
+      if (p === P) break;
+      g.strokeStyle = '#dde0dd'; g.lineWidth = 5;
+      g.beginPath(); g.roundRect(x0 + 34, H * .05, pw - 68, H * 1.3, 70); g.stroke();
+      const cols = Math.floor((pw - 120) / (pitch * ux)), rows = Math.floor((H * .9 - 90) / (pitch * uy));
+      const sx = x0 + pw / 2 - (cols - 1) / 2 * pitch * ux, sy = H * .05 + 78;
+      al.fillStyle = '#000';
+      for (let r = 0; r < rows; r++) for (let q = 0; q < cols; q++) {
+        if (r === 0 && (q < 2 || q > cols - 3)) continue;
+        if (r === 1 && (q < 1 || q > cols - 2)) continue;
+        if (q % 4 === 1 && r > 2 && r < rows - 5 && (q + p) % 8 < 5) continue;
+        if (q % 6 === 3 && r > rows * .55 && r < rows - 2) continue;
+        al.beginPath(); al.ellipse(sx + q * pitch * ux, sy + r * pitch * uy, rad * ux, rad * uy, 0, 0, 7); al.fill();
+      }
+    }
+    const map = new THREE.CanvasTexture(c), alpha = new THREE.CanvasTexture(a);
+    map.colorSpace = THREE.SRGBColorSpace;
+    alpha.generateMipmaps = false; alpha.minFilter = THREE.LinearFilter;
+    for (const t of [map, alpha]) { t.wrapS = THREE.RepeatWrapping; t.anisotropy = renderer.capabilities.getMaxAnisotropy(); }
+    return { map, alpha };
+  }
+  const st = shellTextures();
+  const shell = new THREE.Mesh(
+    new THREE.CylinderGeometry(1, 1, SHELL_H, 128, 1, true),
+    new THREE.MeshStandardMaterial({ map: st.map, alphaMap: st.alpha, alphaTest: 0.5, roughness: 0.48, envMapIntensity: 0.7, side: THREE.DoubleSide })
+  );
+  shell.position.y = 0.12 + SHELL_H / 2;
+  const V = (x, y) => new THREE.Vector2(x, y);
+  const base = new THREE.Mesh(new THREE.LatheGeometry([V(0, 0), V(.93, 0), V(.975, .015), V(1, .05), V(1, .125)], 128), white);
+  const seam = new THREE.Mesh(new THREE.TorusGeometry(1.001, 0.007, 8, 128), new THREE.MeshStandardMaterial({ color: 0xc9cdca, roughness: .6 }));
+  seam.rotation.x = Math.PI / 2; seam.position.y = SEAM + 0.005;
+  spin.add(shell, base, seam);
+
+  /* --- HEPA filter --- */
+  const filter = new THREE.Group();
+  const pleat = document.createElement('canvas'); pleat.width = 1024; pleat.height = 8;
+  { const g = pleat.getContext('2d');
+    for (let x = 0; x < 1024; x += 8) { const gr = g.createLinearGradient(x, 0, x + 8, 0);
+      gr.addColorStop(0, '#3c5f96'); gr.addColorStop(.5, '#cfe0f5'); gr.addColorStop(1, '#3c5f96');
+      g.fillStyle = gr; g.fillRect(x, 0, 8, 8); } }
+  const pleatTex = new THREE.CanvasTexture(pleat); pleatTex.colorSpace = THREE.SRGBColorSpace;
+  const filterMat = new THREE.MeshStandardMaterial({ map: pleatTex, roughness: .9, emissive: 0x1f6fe0, emissiveMap: pleatTex, emissiveIntensity: .5 });
+  const core = new THREE.Mesh(new THREE.CylinderGeometry(.88, .88, 1.42, 96, 1, true), filterMat);
+  const capMat = new THREE.MeshStandardMaterial({ color: 0x2a3b63, roughness: .5 });
+  const fTop = new THREE.Mesh(new THREE.CylinderGeometry(.9, .9, .07, 96), capMat); fTop.position.y = .745;
+  const fBot = fTop.clone(); fBot.position.y = -.745;
+  filter.add(core, fTop, fBot); filter.position.y = 0.92;
+  spin.add(filter);
+
+  /* --- top cap with grille, fan and power button --- */
+  const cap = new THREE.Group();
+  const pts = [V(1, SEAM + .01), V(1, 2.45)];
+  for (let i = 1; i <= 10; i++) { const a = i / 10 * Math.PI / 2; pts.push(V(.76 + .24 * Math.cos(a), 2.45 + .25 * Math.sin(a))); }
+  pts.push(V(.72, 2.69), V(.69, 2.66), V(.68, 2.58), V(.68, 2.4));
+  cap.add(new THREE.Mesh(new THREE.LatheGeometry(pts, 128), white));
+  const well = new THREE.Mesh(new THREE.CircleGeometry(.68, 64), new THREE.MeshStandardMaterial({ color: 0x1b2440, roughness: .8 }));
+  well.rotation.x = -Math.PI / 2; well.position.y = 2.42; cap.add(well);
+  const deck = new THREE.Group(); deck.position.y = 2.46;
+  const deckMat = new THREE.MeshStandardMaterial({ color: 0x2a3550, roughness: .45, metalness: .25, side: THREE.DoubleSide });
+  deck.add(new THREE.Mesh(new THREE.CylinderGeometry(.665, .665, .16, 64, 1, true), deckMat));
+  const motor = new THREE.Mesh(new THREE.CylinderGeometry(.17, .17, .2, 32), deckMat); deck.add(motor);
+  for (let i = 0; i < 3; i++) { const sp = new THREE.Mesh(new THREE.BoxGeometry(.66, .025, .05), deckMat); sp.position.y = -.07; sp.rotation.y = i * Math.PI / 3; deck.add(sp); }
+  const rim = new THREE.Mesh(new THREE.TorusGeometry(.665, .014, 8, 64), new THREE.MeshStandardMaterial({ color: 0x8fa3c8, roughness: .3, metalness: .5 }));
+  rim.rotation.x = Math.PI / 2; rim.position.y = .08; deck.add(rim);
+  const fan = new THREE.Group();
+  for (let i = 0; i < 7; i++) {
+    const blade = new THREE.Mesh(new THREE.BoxGeometry(.4, .012, .2), new THREE.MeshStandardMaterial({ color: 0x4a5a86, roughness: .5 }));
+    const a = i / 7 * Math.PI * 2; blade.position.set(Math.cos(a) * .44, 0, Math.sin(a) * .44);
+    blade.rotation.set(.35, -a, 0, 'YXZ'); fan.add(blade);
+  }
+  deck.add(fan); spin.add(deck);
+  const FINS = 46, fins = new THREE.InstancedMesh(new THREE.BoxGeometry(.4, .06, .014), white, FINS), m4 = new THREE.Object3D();
+  for (let i = 0; i < FINS; i++) {
+    const a = i / FINS * Math.PI * 2;
+    m4.position.set(Math.cos(a) * .49, 2.62, Math.sin(a) * .49); m4.rotation.set(0, -a + .42, 0); m4.updateMatrix();
+    fins.setMatrixAt(i, m4.matrix);
+  }
+  cap.add(fins);
+  const hub = new THREE.Mesh(new THREE.CylinderGeometry(.3, .3, .1, 64), new THREE.MeshStandardMaterial({ color: 0x18224a, roughness: .25, metalness: .2 }));
+  hub.position.y = 2.63; cap.add(hub);
+  const ledMat = new THREE.MeshStandardMaterial({ color: 0x0b1530, emissive: 0x6fd8ff, emissiveIntensity: 1.6 });
+  const led = new THREE.Mesh(new THREE.TorusGeometry(.17, .012, 8, 64), ledMat);
+  led.rotation.x = Math.PI / 2; led.position.y = 2.682; cap.add(led);
+  spin.add(cap);
+
+  /* --- exploded-view guide lines --- */
+  const CAP_UP = 2.3, DECK_UP = .95, FILTER_UP = .8;
+  const gp = [];
+  const dash = (x, z, y0, y1) => { for (let y = y0; y < y1; y += .12) gp.push(x, y, z, x, Math.min(y + .06, y1), z); };
+  dash(0, 0, .05, 5.3);
+  for (let i = 0; i < 4; i++) { const a = i * Math.PI / 2 + Math.PI / 4; dash(Math.cos(a) * 1.002, Math.sin(a) * 1.002, SEAM, SEAM + CAP_UP); }
+  const guideGeo = new THREE.BufferGeometry(); guideGeo.setAttribute('position', new THREE.Float32BufferAttribute(gp, 3));
+  const guideMat = new THREE.LineBasicMaterial({ color: css('--ink'), transparent: true, opacity: 0, depthWrite: false });
+  const guides = new THREE.LineSegments(guideGeo, guideMat); guides.visible = false; spin.add(guides);
+
+  /* --- ground shadow --- */
+  const shadowMat = new THREE.MeshBasicMaterial({ color: css('--shadow'), transparent: true, opacity: .45, depthWrite: false });
+  const shadow = new THREE.Mesh(new THREE.CircleGeometry(1.55, 64), shadowMat);
+  shadow.rotation.x = -Math.PI / 2; shadow.position.y = -0.002; shadow.renderOrder = -1; shadow.visible = false; rig.add(shadow);
+
+  /* --- particles --- */
+  const uScale = { value: 1 };
+  const pointsMat = color => new THREE.ShaderMaterial({
+    uniforms: { uColor: { value: new THREE.Color(color) }, uScale },
+    vertexShader: `attribute float aAlpha; attribute float aSize; varying float vA; uniform float uScale;
+      void main(){ vA=aAlpha; vec4 mv=modelViewMatrix*vec4(position,1.); gl_PointSize=aSize*uScale/-mv.z; gl_Position=projectionMatrix*mv; }`,
+    fragmentShader: `uniform vec3 uColor; varying float vA;
+      void main(){ float d=length(gl_PointCoord-.5); float a=smoothstep(.5,.1,d)*vA; if(a<.01) discard; gl_FragColor=vec4(uColor,a);
+      #include <colorspace_fragment>
+      }`,
+    transparent: true, depthWrite: false
+  });
+  function makePoints(n, color) {
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(n * 3), 3));
+    geo.setAttribute('aAlpha', new THREE.BufferAttribute(new Float32Array(n), 1));
+    geo.setAttribute('aSize', new THREE.BufferAttribute(new Float32Array(n), 1));
+    const p = new THREE.Points(geo, pointsMat(color)); p.frustumCulled = false; rig.add(p);
+    return { n, pos: geo.attributes.position, alpha: geo.attributes.aAlpha, size: geo.attributes.aSize };
+  }
+  const R = Math.random, TAU = Math.PI * 2;
+  const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+
+  // clean air leaving
+  const clean = makePoints(150, 0xffffff);
+  const cT = new Float32Array(150), cTh = new Float32Array(150), cR = new Float32Array(150), cS = new Float32Array(150);
+  for (let i = 0; i < 150; i++) { cT[i] = R(); cTh[i] = R() * TAU; cR[i] = .1 + R() * .5; cS[i] = .25 + R() * .25; clean.size.array[i] = .06 + R() * .1; }
+  clean.size.needsUpdate = true;
+  // faint blue mist from the outlet
+  const MI = 30, mist = makePoints(MI, 0xa9dcff);
+  const mT = new Float32Array(MI), mTh = new Float32Array(MI), mS = new Float32Array(MI);
+  for (let i = 0; i < MI; i++) { mT[i] = R(); mTh[i] = R() * TAU; mS[i] = .1 + R() * .08; mist.size.array[i] = .5 + R() * .5; }
+  mist.size.needsUpdate = true;
+  // smoke you can release
+  const SM = 170, smoke = makePoints(SM, 0x59605f);
+  const sAge = new Float32Array(SM).fill(-1);
+  let smokeLive = 0, smokeWatch = false;
+  function puff() {
+    const a = -spinAngle() + (R() < .5 ? .5 : Math.PI - .5) + (R() - .5) * .6;
+    const cx = Math.cos(a) * 2.5, cz = Math.sin(a) * 1.2 + 1.2, cy = 1.0 + R() * .5;
+    for (let i = 0; i < SM; i++) {
+      const u = R() * TAU, v = Math.acos(2 * R() - 1), rr = Math.cbrt(R()) * .6;
+      smoke.pos.setXYZ(i, cx + rr * Math.sin(v) * Math.cos(u), cy + rr * Math.cos(v) * .8, cz + rr * Math.sin(v) * Math.sin(u));
+      smoke.size.array[i] = .16 + R() * .22; sAge[i] = .001 + R() * .3;
+    }
+    smoke.size.needsUpdate = true; smokeWatch = true;
+    say(state.power ? 'Pulling the smoke in…' : 'It is switched off. Turn the power on to clear the smoke.');
+  }
+  // negative ions
+  const ionCanvas = document.createElement('canvas'); ionCanvas.width = ionCanvas.height = 128;
+  { const g = ionCanvas.getContext('2d'), gr = g.createRadialGradient(50, 46, 6, 64, 64, 60);
+    gr.addColorStop(0, 'rgba(255,255,255,.95)'); gr.addColorStop(.5, 'rgba(160,215,245,.5)'); gr.addColorStop(1, 'rgba(90,170,225,.75)');
+    g.fillStyle = gr; g.beginPath(); g.arc(64, 64, 58, 0, 7); g.fill();
+    g.strokeStyle = 'rgba(255,255,255,.95)'; g.lineWidth = 4; g.stroke();
+    g.fillStyle = '#fff'; g.beginPath(); g.roundRect(36, 56, 56, 15, 7); g.fill(); }
+  const ionTex = new THREE.CanvasTexture(ionCanvas); ionTex.colorSpace = THREE.SRGBColorSpace;
+  const ions = [];
+  for (let i = 0; i < 9; i++) {
+    const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: ionTex, transparent: true, depthWrite: false, opacity: 0 }));
+    rig.add(s); ions.push({ s, t: i / 9, th: R() * TAU, r: .2 + R() * .55, k: .16 + R() * .14, sp: .1 + R() * .06 });
+  }
+
+  /* --- interaction --- */
+  let rotY = -0.35, rotX = 0, velY = 0, dragging = false, moved = 0, lx = 0, ly = 0, idle = 0;
+  const spinAngle = () => rotY;
+  canvas.addEventListener('pointerdown', e => { dragging = true; moved = 0; lx = e.clientX; ly = e.clientY; canvas.classList.add('dragging'); canvas.setPointerCapture(e.pointerId); });
+  canvas.addEventListener('pointermove', e => {
+    if (!dragging) return;
+    const dx = e.clientX - lx, dy = e.clientY - ly; lx = e.clientX; ly = e.clientY; moved += Math.abs(dx) + Math.abs(dy);
+    rotY += dx * .009; velY = dx * .009 * 60; rotX = Math.max(-.12, Math.min(.3, rotX + dy * .004)); idle = 0;
+  });
+  const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
+  const end = e => {
+    if (!dragging) return; dragging = false; canvas.classList.remove('dragging');
+    if (moved < 6 && e.type === 'pointerup') {
+      const r = canvas.getBoundingClientRect();
+      ndc.set((e.clientX - r.left) / r.width * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+      ray.setFromCamera(ndc, camera);
+      if (ray.intersectObjects([hub, fins, well], false).length) setPower(!state.power);
+    }
+  };
+  canvas.addEventListener('pointerup', end); canvas.addEventListener('pointercancel', end);
+  canvas.addEventListener('keydown', e => { if (e.key === 'ArrowLeft') rotY -= .2; if (e.key === 'ArrowRight') rotY += .2; });
+  canvas.tabIndex = 0;
+
+  const bPower = document.getElementById('b-power'), bInside = document.getElementById('b-inside');
+  function setPower(on) {
+    state.power = on; bPower.setAttribute('aria-pressed', on);
+    say(on ? (smokeLive ? 'Pulling the smoke in…' : 'On. Air is moving through the filter.') : 'Off. Tap the top or the Power button to start it again.');
+  }
+  bPower.onclick = () => setPower(!state.power);
+  bInside.onclick = () => {
+    state.inside = !state.inside; bInside.setAttribute('aria-pressed', state.inside);
+    say(state.inside ? 'Exploded view: grille, fan, HEPA filter and intake shell.' : 'Closed up again.');
+  };
+  document.getElementById('b-smoke').onclick = puff;
+
+  /* --- layout + loop --- */
+  let W = 1, H = 1, aspect = 1;
+  const cam = { T: 1.9, d: 10.5, x: 0 }; let rise = 1;
+  function resize() {
+    W = view.clientWidth; H = view.clientHeight; aspect = W / H;
+    renderer.setSize(W, H, false); camera.aspect = aspect; camera.updateProjectionMatrix();
+    uScale.value = H * renderer.getPixelRatio() / (2 * Math.tan(FOV * Math.PI / 360));
+  }
+  new ResizeObserver(resize).observe(view); resize();
+  function target() {
+    const narrow = aspect < .9, d = Math.max(10.5, 4.1 / (.536 * aspect));
+    if (state.step === 0) return { T: (narrow ? 1.35 : 1.9) * d / 10.5, d, x: 0 };
+    if (narrow) return { T: .05 * d, d, x: 0 };
+    return { T: 1.5, d: 11.5, x: -Math.min(2.2, aspect * 1.2) };
+  }
+
+  Object.assign(cam, target());
+  const calloutsEl = document.getElementById('callouts'), calls = [...calloutsEl.children], v3 = new THREE.Vector3();
+  let calloutsShown = false;
+  const clock = new THREE.Clock();
+  function frame() {
+    const dt = Math.min(clock.getDelta(), .05), t = clock.elapsedTime, k = 1 - Math.exp(-dt * 4);
+    const tg = target();
+    cam.T += (tg.T - cam.T) * k; cam.d += (tg.d - cam.d) * k; cam.x += (tg.x - cam.x) * k;
+    rig.position.x = cam.x;
+    const eT = cam.T + state.explode * 1.0, eD = cam.d + state.explode * 4;
+    camera.position.set(0, eT + 2.3 * eD / cam.d, eD); camera.lookAt(0, eT, 0);
+
+    if (!dragging) {
+      rotY += velY * dt; velY *= Math.exp(-dt * 3); idle += dt;
+      if (!reduced && idle > 1.5) rotY += dt * .12;
+      rotX += (0 - rotX) * (1 - Math.exp(-dt * 1.5));
+    }
+    spin.rotation.set(rotX, rotY, 0);
+
+    state.flow += ((state.power ? 1 : 0) - state.flow) * (1 - Math.exp(-dt * 2.5));
+    const wantOpen = state.inside || state.step === 2 ? 1 : 0;
+    state.explode += (wantOpen - state.explode) * (1 - Math.exp(-dt * 3.5));
+    const f = state.flow, e = state.explode;
+    cap.position.y = e * CAP_UP; deck.position.y = 2.46 + e * DECK_UP; filter.position.y = .92 + e * FILTER_UP;
+    guides.visible = e > .02; guideMat.opacity = .55 * smooth(.3, 1, e);
+    view.classList.toggle('inspecting', state.inside);
+    if (e > .02) {
+      const narrow = aspect < .9, left = state.step === 2 && !narrow;
+      calloutsEl.classList.toggle('compact', narrow || state.step === 2);
+      camera.updateMatrixWorld(); rig.updateMatrixWorld();
+      const A = [[.7, cap.position.y + 2.68], [.67, deck.position.y], [.89, filter.position.y + .3], [1, .7]];
+      calls.forEach((el, i) => {
+        v3.set(left ? -A[i][0] : A[i][0], A[i][1], 0); rig.localToWorld(v3); v3.project(camera);
+        el.classList.toggle('left', left);
+        el.style.transform = `translate(${((v3.x * .5 + .5) * W).toFixed(1)}px,${((-v3.y * .5 + .5) * H).toFixed(1)}px) translate(${left ? '-100%' : '0'},-50%)`;
+        el.style.opacity = smooth(.55, 1, e).toFixed(2);
+      });
+      calloutsShown = true;
+    } else if (calloutsShown) { calls.forEach(el => el.style.opacity = 0); calloutsShown = false; }
+    fan.rotation.y -= dt * 16 * f;
+    filterMat.emissiveIntensity = .05 + .5 * f;
+    ledMat.emissiveIntensity = .1 + 1.7 * f;
+    const outBoost = state.step === 3 ? 1.5 : 1;
+
+    rise += ((state.step === 0 ? .5 : 1) - rise) * k;
+    const topY = 2.66 + e * CAP_UP;
+    for (let i = 0; i < clean.n; i++) {
+      cT[i] += dt * cS[i] * (.2 + f); if (cT[i] > 1) { cT[i] = 0; cTh[i] = R() * TAU; }
+      const rr = cR[i] * (1 + cT[i] * 1.7);
+      clean.pos.setXYZ(i, Math.cos(cTh[i] + cT[i]) * rr, topY + cT[i] * 2.1 * rise, Math.sin(cTh[i] + cT[i]) * rr);
+      clean.alpha.array[i] = f * .75 * outBoost * Math.sin(Math.PI * cT[i]);
+    }
+    clean.pos.needsUpdate = clean.alpha.needsUpdate = true;
+
+    for (let i = 0; i < MI; i++) {
+      mT[i] += dt * mS[i] * (.2 + f); if (mT[i] > 1) { mT[i] = 0; mTh[i] = R() * TAU; }
+      const rr = .12 + mT[i] * .55, sway = Math.sin(t * .6 + mTh[i] * 3) * .12 * mT[i];
+      mist.pos.setXYZ(i, Math.cos(mTh[i]) * rr + sway, topY + .1 + mT[i] * 1.9 * rise, Math.sin(mTh[i]) * rr);
+      mist.alpha.array[i] = f * .15 * Math.sin(Math.PI * mT[i]);
+    }
+    mist.pos.needsUpdate = mist.alpha.needsUpdate = true;
+
+    smokeLive = 0;
+    for (let i = 0; i < SM; i++) {
+      if (sAge[i] < 0) { smoke.alpha.array[i] = 0; continue; }
+      sAge[i] += dt; smokeLive++;
+      let x = smoke.pos.getX(i), y = smoke.pos.getY(i), z = smoke.pos.getZ(i);
+      const r = Math.hypot(x, z) || 1e-3;
+      if (f > .3) {
+        const pull = Math.min(2.2, 1.5 / r) * f * dt;
+        x += (-x / r) * pull + (-z / r) * .5 * dt; z += (-z / r) * pull + (x / r) * .5 * dt;
+        y += (Math.min(1.5, Math.max(.3, y)) - y + (.9 - y) * .3) * dt * 1.6;
+      } else { y += dt * .06; x += Math.sin(t * .7 + i) * dt * .05; z += Math.cos(t * .6 + i * 2) * dt * .05; }
+      smoke.pos.setXYZ(i, x, y, z);
+      const fade = f > .3 ? smooth(1, 1.5, r) : smooth(14, 9, sAge[i]);
+      smoke.alpha.array[i] = .32 * smooth(0, .5, sAge[i]) * fade;
+      if ((f > .3 && r < 1.02) || sAge[i] > 14) sAge[i] = -1;
+    }
+    smoke.pos.needsUpdate = smoke.alpha.needsUpdate = true;
+    if (smokeWatch && smokeLive === 0) { smokeWatch = false; say(state.power ? 'Smoke cleared.' : 'The smoke drifted off on its own. Try it with the power on.'); }
+
+    for (const o of ions) {
+      o.t += dt * o.sp * (.2 + f); if (o.t > 1) { o.t = 0; o.th = R() * TAU; }
+      const rr = o.r * (1 + o.t);
+      o.s.position.set(Math.cos(o.th) * rr + Math.sin(t + o.th) * .05, topY + .15 + o.t * 1.9 * rise, Math.sin(o.th) * rr);
+      o.s.scale.setScalar(o.k * (.7 + o.t * .6));
+      o.s.material.opacity = f * Math.sin(Math.PI * o.t) * Math.min(1, .8 * outBoost);
+    }
+
+    renderer.render(scene, camera);
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+}
+</script>
+</body>
+</html>
